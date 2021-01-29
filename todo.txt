@@ -1,0 +1,46 @@
+options
+- check latest version (return the top adapter version)
+- unity package download link (latest) show adapter version for each platform
+- check by network (if type admob then will show ios and aos change logs for the network)
+- check by sdk version (if enter 5.15, hmmm, this is tough)
+-
+
+
+examples)
+
+nchangelog -n all
+-- show all network change logs (including unity links)
+
+nchangelog -n all -o ios
+-- show all network change logs + ios/aos/unity only
+
+nchangelog -n admob
+-- show admob change logs (both ios/aos/unity;link)
+
+nchangelog -n admob -o ios
+-- show admob change logs for ios only; unity show link
+
+nchangelog -l (show latest only)
+nchangelog -n all -l (show all change logs but latest only)
+nchangelog -n admob -l -o ios (show change logs but latest for iOS admob)
+
+
+# beta.....
+nchangelog -n all -v 5.15 (show change logs for sdk 5.15 and above??)
+-- show all change logs for all platform but including only 5.15 sdk (how about unity?)
+
+nchangelog -n admob -v 5.15
+--  show admob change logs for ios/aos/unity but including 5.15 only?
+
+nchange logs -n admob -c (show certified only)
+-- show certified only?
+
+nchangelog -n without param
+-- show available networks
+
+# extra
+nchangelog -h or --help
+-- print help
+
+nchangelogs --version
+-- show version
