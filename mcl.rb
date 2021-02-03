@@ -1,19 +1,12 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
-require 'json'
 require 'net/http'
 require 'nokogiri'
 require 'rainbow'
 require 'word_wrap'
-
 require 'terminal-table'
 
-require 'pry'
-require 'pp'
-
-
-# constants
 IOS_MEDIATION = "https://github.com/mopub/mopub-ios-mediation"
 AOS_MEDIATION = "https://github.com/mopub/mopub-android-mediation"
 
@@ -30,10 +23,13 @@ CMD_EXAMPLES = %Q[
 # Show Facebook iOS change logs
   $ mcl -n facebook -p ios
 
-# Show only the latest logs from all networks
+# Show only the latest logs from all networks for both iOS and Android
   $ mcl -l 1
 
-# Show MoPub SDK compatible versions only
+# Show all available networks
+  $ mcl -n all
+
+# Show Pangle Android change logs for MoPub SDK 5.13 certified 
   $ mcl -n pangle -p aos -v 5.13
 ].strip
 
@@ -58,21 +54,23 @@ end
 
 # Takes key and url, returns HTML contents
 def getContentFromGitHub(urls)
-
-  # To-do handle exception
   content = Hash.new
-	Net::HTTP.start("github.com", 443, :use_ssl => true) do |http|
-    urls.each do |key, url|
-      uri = URI(url)
-      request = Net::HTTP::Get.new uri
-      response = http.request request
-      content[key] = response.body
+  begin
+    Net::HTTP.start("github.com", 443, :use_ssl => true) do |http|
+      urls.each do |key, url|
+        uri = URI(url)
+        request = Net::HTTP::Get.new uri
+        response = http.request request
+        content[key] = response.body
+      end
     end
-	end
+  rescue => e
+    # Exit script if there is a http error
+    puts "Error: #{e.message}"
+    exit
+  end
   return content
 end
-
-
 
 def getAvailableNetworks()
 	available_networks_ios = []
@@ -193,9 +191,6 @@ def parseChangeLogHtml(changelog_html)
   return change_logs
 end
 
-def breakLine(msg)
-  return msg
-end
 
 def printMessages(messages, dash = "") 
   final = ""
@@ -206,11 +201,11 @@ def printMessages(messages, dash = "")
       if dash == "" || dash == BULLET_CHAR
         # puts %Q[ #{Rainbow(BULLET_CHAR + ">").green.bright} #{WordWrap.ww(msg, 150)}]
         # final += %Q[ #{Rainbow(BULLET_CHAR + ">").bright} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
-        final += %Q[ #{BULLET_CHAR}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
+        final += %Q[#{BULLET_CHAR}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
       else
         # puts %Q[ #{Rainbow(dash + ">").green.bright} #{WordWrap.ww(msg, 150)}]
         # final += %Q[ #{Rainbow(dash + ">").bright} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
-        final += %Q[ #{dash}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
+        final += %Q[#{dash}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
       end
     else
       return final + printMessages(msg, dash + BULLET_CHAR)  
@@ -225,8 +220,7 @@ def printChangeLogs(change_logs, filter)
   sdk_version = filter[:sdk_version] == nil ? "0" : createVersionObj(filter[:sdk_version])
 
   change_logs.each do |platform, logs|
-    # puts Rainbow(platform.upcase).aqua.bright.underline
-    puts platform.upcase
+    puts Rainbow(platform.upcase).yellow.underline.bright
 
     number_of_printed_logs = 0
 
@@ -312,36 +306,10 @@ available_networks = {}
 
 oparser = OptionParser.new do |opts| 
 	opts.banner = "Usage: mcl.rb [options]"
-	opts.version = "1.0"
-
-  # Platform  
-  opts.on("-p", "--platform PLATFORM", String, "Choose platform. 'ios' or 'aos', case insensitive") do |value|
-    value.downcase!
-    if not ["ios", "aos"].include? value
-      puts %Q[You can only enter "iOS" or "AOS" (case insensitive)]
-      exit
-    end
-		options[:platform] = value.downcase
-	end
-
-  # Number of logs
-  opts.on("-l", "--logs NUMBER_OF_LOGS", "Number of logs to print. Default #{NUMBER_OF_LOGS_TO_PRINT}. Outputs from the latest") do |value|
-    options[:num_of_logs] = value.to_i
-  end
-
-  # MoPub SDK version
-  opts.on("-v", "--sdk_version SDK_VERSION", "Show verions certified with entered MoPub SDK") do |value|
-    sdk_version = value.match(/([4-7]\.[0-9](?:[0-9])?(?:\.[0-9])?)/)
-    if sdk_version == nil 
-      puts "SDK version is not in the right format. Example: 5.16 or 5.15.1"
-      exit
-    else
-      options[:sdk] = sdk_version.captures.first
-    end
-	end
+  opts.version = "1.0.0"
 
 	# Network
-  opts.on("-n", "--network NETWORK", String, "A network name to pull change logs. Use 'all' to see available networks") do |value|
+  opts.on("-n", "--network NETWORK", String, "Network name for change logs. Use 'all' to see available networks") do |value|
     value.strip!
     if value.length < MIN_NETWORK_NAME_CHAR
       puts "Entered network does not exist. Use 'all' to see available networks"
@@ -364,12 +332,39 @@ oparser = OptionParser.new do |opts|
     end
 	end
 
+  # MoPub SDK version
+  opts.on("-v", "--sdk_version SDK_VERSION", "Show change logs certified with specified MoPub SDK only") do |value|
+    sdk_version = value.match(/([4-7]\.[0-9](?:[0-9])?(?:\.[0-9])?)/)
+    if sdk_version == nil 
+      puts "SDK version is not in the right format. Example: 5.16 or 5.15.1"
+      exit
+    else
+      options[:sdk] = sdk_version.captures.first
+    end
+	end
+
+  # Platform  
+  opts.on("-p", "--platform PLATFORM", String, "Choose platform. 'ios' or 'aos' case insensitive") do |value|
+    value.downcase!
+    if not ["ios", "aos"].include? value
+      puts %Q[You can only enter "iOS" or "AOS" (case insensitive)]
+      exit
+    end
+		options[:platform] = value.downcase
+	end
+
+  # Number of logs
+  opts.on("-l", "--logs NUMBER_OF_LOGS", "Number of logs to print. Default #{NUMBER_OF_LOGS_TO_PRINT}. Outputs from the latest") do |value|
+    options[:num_of_logs] = value.to_i
+  end
+
+
 	opts.on("-e", "--example", "Show command examples") do |value|
     puts CMD_EXAMPLES
 		exit
 	end
 
-	opts.on("-h", "--help", "Print the help message") do |value|
+	opts.on("-h", "--help", "Print help message") do |value|
 		puts oparser
 		exit
 	end
@@ -380,8 +375,8 @@ end
 begin
   oparser.parse!
 rescue OptionParser::MissingArgument, OptionParser::InvalidOption => e
-  puts e.message
-  puts oparser
+  puts "Error: #{e.message}"
+  exit
 end
 
 
@@ -392,6 +387,7 @@ puts options
 
 # main logic starts here
 
+# -n is mandantory, if not then dont run this
 # get get change logs links
 change_log_urls = getChangeLogUrls(available_networks)
 
