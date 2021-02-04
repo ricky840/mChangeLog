@@ -20,17 +20,23 @@ BULLET_CHAR = "-"
 WORD_WRAP_COUNT = 60
 
 CMD_EXAMPLES = %Q[
-# Show Facebook iOS change logs
+# Show Facebook iOS change logs. This will print default number of logs - #{NUMBER_OF_LOGS_TO_PRINT}
   $ mcl -n facebook -p ios
 
-# Show only the latest logs from all networks for both iOS and Android
-  $ mcl -l 1
+# Show all change logs for AdMob iOS
+  $ mcl -n admob -l 100 -p ios
 
-# Show all available networks
-  $ mcl -n all
+# Show only the latest from all networks for both iOS and Android.
+  $ mcl -n all -l 1
 
-# Show Pangle Android change logs for MoPub SDK 5.13 certified 
+# Show Pangle Android change logs for MoPub SDK 5.13 certified. Both 5.13 or 5.13.0 works.
   $ mcl -n pangle -p aos -v 5.13
+
+# Show Snap change logs for MoPub SDK 5.14.1 certified. 
+  $ mcl -n snap -v 5.14.1
+
+# Print all available networks
+  $ mcl -a
 ].strip
 
 def getChangeLogUrls(available_networks)
@@ -118,14 +124,10 @@ def parseList(li)
   end
 end
 
-
-
-
 def findCertifiedSDKVersion(change_logs) # array
   sdk_version = "Unknown"
   log_messages = change_logs.flatten
   log_messages.each do |each_msg|
-
     # See if it includes SDK version after "MoPub". ex) MoPub SDK 5.14.1
     result_after = each_msg.match(/(?:mopub).*[^0-9]([4-7]\.[0-9](?:[0-9])?\.[0-9])[^0-9]?.*/i)
 
@@ -147,7 +149,6 @@ def findCertifiedSDKVersion(change_logs) # array
 
   return sdk_version
 end
-
 
 def parseChangeLogHtml(changelog_html)
   doc = Nokogiri::HTML(changelog_html)
@@ -191,7 +192,6 @@ def parseChangeLogHtml(changelog_html)
   return change_logs
 end
 
-
 def printMessages(messages, dash = "") 
   final = ""
 
@@ -199,13 +199,9 @@ def printMessages(messages, dash = "")
     # For first and second level, use - only. Otherwise increase the number of dash
     if not msg.kind_of? Array
       if dash == "" || dash == BULLET_CHAR
-        # puts %Q[ #{Rainbow(BULLET_CHAR + ">").green.bright} #{WordWrap.ww(msg, 150)}]
-        # final += %Q[ #{Rainbow(BULLET_CHAR + ">").bright} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
-        final += %Q[#{BULLET_CHAR}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
+        final += %Q[#{Rainbow(BULLET_CHAR + ">").yellow} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
       else
-        # puts %Q[ #{Rainbow(dash + ">").green.bright} #{WordWrap.ww(msg, 150)}]
-        # final += %Q[ #{Rainbow(dash + ">").bright} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
-        final += %Q[#{dash}> #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
+        final += %Q[#{Rainbow(dash + ">").yellow} #{WordWrap.ww(msg, WORD_WRAP_COUNT)}]
       end
     else
       return final + printMessages(msg, dash + BULLET_CHAR)  
@@ -219,68 +215,59 @@ def printChangeLogs(change_logs, filter)
   number_of_logs_to_print = filter[:num_of_logs] == nil ? NUMBER_OF_LOGS_TO_PRINT : filter[:num_of_logs]
   sdk_version = filter[:sdk_version] == nil ? "0" : createVersionObj(filter[:sdk_version])
 
-  change_logs.each do |platform, logs|
-    puts Rainbow(platform.upcase).yellow.underline.bright
+  change_logs.each do |platform, networks|
+    puts Rainbow("[#{platform.upcase}]").yellow.underline.bright
 
-    number_of_printed_logs = 0
-
-    # Test
-    rows = []
     table = Terminal::Table.new do |t|
-      t.headings = ["Adapter", "Certified SDK", "Network SDK", "Change Logs"] 
-      t.rows = rows
+      t.headings = ["Network", "Adapter", "Certified SDK", "Network SDK", "Change Logs"] 
+      t.rows = []
       t.style = {:all_separators => true }
     end
 
-    logs.each do |each_adapter_log|
-      # Version filtering
-      if sdk_version != "0"
-        certified_sdk_version = createVersionObj(each_adapter_log[:certified_sdk_version])
-        if certified_sdk_version != sdk_version 
-          next
+    networks.each do |network, logs|
+      number_of_printed_logs = 0
+
+      logs.each do |each_adapter_log|
+        # Version filtering
+        if sdk_version != "0"
+          certified_sdk_version = createVersionObj(each_adapter_log[:certified_sdk_version])
+          if certified_sdk_version != sdk_version 
+            next
+          end
         end
+
+        # Formatting
+        adapter_version_colored = Rainbow(each_adapter_log[:version]).red.bright
+        sdk_version_colored = Rainbow(each_adapter_log[:certified_sdk_version]).bright.blue
+        network_sdk_version = each_adapter_log[:version].split(".")
+        network_sdk_version.pop()
+        network_sdk_version_colored = Rainbow(network_sdk_version.join(".")).green
+
+        columns = []
+        # Insert the network name only at the first row
+        number_of_printed_logs == 0 ? columns.push(network.to_s.capitalize) : columns.push("")
+        columns.push(adapter_version_colored)
+        columns.push(sdk_version_colored)
+        columns.push(network_sdk_version_colored)
+        columns.push(printMessages(each_adapter_log[:logs]))
+        table.add_row columns
+
+        number_of_printed_logs += 1
+        number_of_printed_logs == number_of_logs_to_print ? break : next
       end
-
-      # Formatting
-      adapter_version_colored = Rainbow(each_adapter_log[:version]).red.bright
-      sdk_version_colored = Rainbow(each_adapter_log[:certified_sdk_version]).bright.blue
-
-      hello = each_adapter_log[:version].split(".")
-      hello.pop()
-      network_sdk_version_colored = Rainbow(hello.join(".")).green
-
-      # puts %Q[#{adapter_version_colored} #{sdk_version_colored}]
-      # printMessages(each_adapter_log[:logs])
-
-      # temp = adapter_version_colored + " " + sdk_version_colored + "\n" + printMessages(each_adapter_log[:logs])
-      columns = []
-      columns.push(adapter_version_colored)
-      columns.push(sdk_version_colored)
-      columns.push(network_sdk_version_colored)
-      columns.push(printMessages(each_adapter_log[:logs]))
-      # columns.push(temp)
-
-      table.add_row columns
-
-      number_of_printed_logs += 1
-      number_of_printed_logs == number_of_logs_to_print ? break : next
     end
 
     puts table
-
-
   end  
 end
 
-
 def createVersionObj(version_string)
   begin
-     return Gem::Version.new(version_string)
+    return Gem::Version.new(version_string)
   rescue ArgumentError
-     return Gem::Version.new("")
+    return Gem::Version.new("")
   end
 end
-
 
 def findMatchingNetwork(input_network, network_list)
   matched = false
@@ -300,40 +287,39 @@ def findMatchingNetwork(input_network, network_list)
  return matched == false ? false : matched 
 end
 
-# global variables
+# Variables
 options = {}
 available_networks = {}
 
 oparser = OptionParser.new do |opts| 
-	opts.banner = "Usage: mcl.rb [options]"
+	opts.banner = "Usage: mcl [options]"
   opts.version = "1.0.0"
 
 	# Network
-  opts.on("-n", "--network NETWORK", String, "Network name for change logs. Use 'all' to see available networks") do |value|
+  opts.on("-n", "--network NETWORK", String, "Specify network. Use 'all' to show all networks.") do |value|
     value.strip!
     if value.length < MIN_NETWORK_NAME_CHAR
-      puts "Entered network does not exist. Use 'all' to see available networks"
+      puts "Entered network does not exist. Use '-a' to see available networks."
       exit
     end
+
     available_networks = getAvailableNetworks()
-    if value == "all"
-      available_networks.each do |key, value|
-        puts Rainbow(key.upcase).blue.bright.underline
-        puts value
+
+    if not value == "all"
+      networks = [findMatchingNetwork(value, (available_networks[:ios] + available_networks[:aos]).uniq)]
+      if networks.first == false
+        puts "Entered network does not exist. Use '-a' to see available networks."
+        exit
       end
-      exit
-    end
-    network = findMatchingNetwork(value, (available_networks[:ios] + available_networks[:aos]).uniq)
-    if network
-      options[:network] = network.downcase
     else
-      puts "Entered network does not exist. Use 'all' to see available networks"
-      exit
+      networks = (available_networks[:ios] + available_networks[:aos]).uniq
     end
+
+    options[:networks] = networks.map(&:downcase)
 	end
 
   # MoPub SDK version
-  opts.on("-v", "--sdk_version SDK_VERSION", "Show change logs certified with specified MoPub SDK only") do |value|
+  opts.on("-v", "--sdk_version SDK_VERSION", "Show change logs certified with specified MoPub SDK only.") do |value|
     sdk_version = value.match(/([4-7]\.[0-9](?:[0-9])?(?:\.[0-9])?)/)
     if sdk_version == nil 
       puts "SDK version is not in the right format. Example: 5.16 or 5.15.1"
@@ -344,7 +330,7 @@ oparser = OptionParser.new do |opts|
 	end
 
   # Platform  
-  opts.on("-p", "--platform PLATFORM", String, "Choose platform. 'ios' or 'aos' case insensitive") do |value|
+  opts.on("-p", "--platform PLATFORM", String, "Choose platform. 'ios' or 'aos' case insensitive.") do |value|
     value.downcase!
     if not ["ios", "aos"].include? value
       puts %Q[You can only enter "iOS" or "AOS" (case insensitive)]
@@ -353,59 +339,68 @@ oparser = OptionParser.new do |opts|
 		options[:platform] = value.downcase
 	end
 
+  # Available Networks
+  opts.on("-a", "--available_network", String, "Show list of available networks.") do |value|
+    available_networks = getAvailableNetworks()
+    available_networks.each do |key, value|
+      puts Rainbow(key.upcase).blue.bright.underline
+      puts value
+    end
+    exit
+	end
+
   # Number of logs
-  opts.on("-l", "--logs NUMBER_OF_LOGS", "Number of logs to print. Default #{NUMBER_OF_LOGS_TO_PRINT}. Outputs from the latest") do |value|
+  opts.on("-l", "--logs NUMBER_OF_LOGS", "Number of logs to print. Default #{NUMBER_OF_LOGS_TO_PRINT}. Outputs from the latest.") do |value|
     options[:num_of_logs] = value.to_i
   end
 
-
-	opts.on("-e", "--example", "Show command examples") do |value|
+  opts.on("-e", "--example", "Show command examples.") do |value|
     puts CMD_EXAMPLES
 		exit
 	end
 
-	opts.on("-h", "--help", "Print help message") do |value|
+  opts.on("-h", "--help", "Print help message.") do |value|
 		puts oparser
 		exit
 	end
 end
 
-# parse options, [To-Do] add exception missing argument
-
 begin
   oparser.parse!
+  if options[:networks] == nil
+    puts oparser
+  end
 rescue OptionParser::MissingArgument, OptionParser::InvalidOption => e
   puts "Error: #{e.message}"
   exit
 end
 
-
-# [TEMP] print options
-puts "entered options"
-puts options
-
-
-# main logic starts here
-
-# -n is mandantory, if not then dont run this
-# get get change logs links
+# Main
 change_log_urls = getChangeLogUrls(available_networks)
 
+# Filter urls by platform and network
 target_network_urls = change_log_urls.each_with_object({}) do |(platform, network_urls), target_urls|
-  # Check the platform entered
   if options[:platform] == platform.to_s || options[:platform].nil?
     network_urls.each do |network, url|
-      if options[:network] == network.to_s
-        target_urls[platform] = url
+      if options[:networks].include? network.to_s
+        target_urls[platform] != nil ? target_urls[platform][network] = url : target_urls[platform] = {network => url}
       end
     end
   end 
 end
 
-changelog_htmls = getContentFromGitHub(target_network_urls)
-
-parsed_change_logs = changelog_htmls.each_with_object({}) do |(platform, html), parsed_logs|
-  parsed_logs[platform] = parseChangeLogHtml(html)
+# Get change log htmls
+changelog_htmls = target_network_urls.each_with_object({}) do |(platform, network_urls), log_htmls|
+  log_htmls[platform] = getContentFromGitHub(network_urls)
 end
 
-printChangeLogs(parsed_change_logs, { :num_of_logs => options[:num_of_logs], :sdk_version => options[:sdk] })
+# Change log messages
+parsed_change_logs = changelog_htmls.each_with_object({}) do |(platform, network_htmls), parsed_logs|
+  network_htmls.each do |network, html|
+    change_log = parseChangeLogHtml(html)
+    parsed_logs[platform] != nil ? parsed_logs[platform][network] = change_log : parsed_logs[platform] = {network => change_log}
+  end
+end
+
+# Print
+printChangeLogs(parsed_change_logs, {:num_of_logs => options[:num_of_logs], :sdk_version => options[:sdk]})
